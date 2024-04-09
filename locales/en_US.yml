@@ -1,0 +1,148 @@
+#Main
+bot_is_ready: "The bot is ready"
+processing: "Processing..."
+no_desc: "no_desc"
+indev: "not done yet"
+denied: "Sorry, this command is only for admins"
+bot_denied: "Sorry, I do not have \"{permission}\" permission in the channel to do that!"
+channel_denied: "Sorry, this command is only available for those who have \"{permission}\" permission in the channel."
+exception: "Seems like something went wrong :/\nPinging dev: <@431451036151185408>" #\n - new line; \t - tab
+#Permissions
+permissions:
+  manage_roles: "Manage Roles"
+  manage_webhooks: "Manage Webhooks"
+  administrator: "Administrator"
+  owner: "Owner"
+  send_messages: "Send Messages"
+#database
+author_not_found: "For some reason you're not in my database, try to post a message at first."
+
+errors:
+  zero_luck: "Lorem Ipsum"
+  discord:
+    cache: "The cache doesn't contain required data at the moment, please try later."
+    insufficient_role_position:  "Your highest's role position is either lower than or equal with %{role}."
+  database:
+    oops: "Oops! Something went wrong with the database!"
+    unreachable: "The database is unreachable, please try later."
+
+elections:
+  desc: "Elections commands"
+  system: "Congratulations! <@{elected_members}> have won the <@&role> election!"
+
+  announcement:
+    header: "## Election results"
+    role: "### Role: <@&%{role}>"
+    promoted: "Promoted: "
+    demoted: "Demoted: "
+    scheduled_for: "Scheduled next %{role} elections for %{date}"
+
+  force:
+    lack_permissions: "%{role} is higher than my highest role, I can't manage it!"
+    success: "Successfully hosted the elections."
+    election_not_found: "%{role} is not electable!"
+
+  roles:
+    list:
+      desc: "List of opened elections in the server"
+      table:
+        index: "No."
+        name: "Role"
+        scheduled_for: "Scheduled for"
+        hosted_each: "Hosted each"
+      success: "Opened elections in the server:\n```%{table}```"
+      empty: "Currently there's no opened elections in the server!"
+    add:
+      desc: "Open elections for the specified role"
+      exists: "%{role} is already electable!"
+      success: "Elections for %{role} started!"
+    edit: 
+      desc: "Edit parameters of the specified election"
+      success: "### Set new parameters for %{role} elections:\nNumber of available positions:\n%{number_of_positions}\nHosted each: %{period}"
+      not_found: "%{role} is not electable!"
+    delete:
+      desc: "Cancel elections for the specified role"
+      success: "Elections for %{role} closed!"
+      not_found: "There's no ongoing elections for %{role} to cancel!"
+
+  claims:
+    add:
+      desc: "Take participation in the election for the specified role"
+      elections_not_found: "%{role} is not electable!"
+      exists: "You already claim %{role}!"
+      success: "%{user} becomes a candidate of %{role} elections!"
+    delete:
+      desc: "Leave %{role} elections"
+      success: "%{user} draws back their candidature for the %{role} elections!"
+      banned: "You can't unclaim %{role} until you're unbanned from participating in the elections!"
+      claim_not_found: "You are not claiming %{role}!"
+      election_not_found: "%{role} is not electable!"
+    edit_ban:
+      claim_not_found: "Something went wrong with the database, please try again."
+      election_not_found: "%{role} is not electable!"
+    ban:
+      desc: "Ban users from elections of the specified role"
+      success: "Banned %{user} from participating in %{role} elections until <t:%{banned_until}:f>"
+  
+  votes:
+    list:
+      desc: "The table of candidates you vote for in elections of the specified role"
+      table:
+        index: "No."
+        candidates: "Candidates"
+      success: "The table of %{role} candidates you vote for:\n```%{table}```"
+      empty: "You don't vote for anyone who claims %{role} role"
+    add:
+      desc: "Vote for the specified member in elecetions of the provided role"
+      desc: "Support the specified member who claims the role with your cloned points"
+      exists: "You already support %{candidate} in %{role} elections!"
+      success: "A vote for %{candidate} in %{role} has been added!"
+      candidate_not_found: "%{candidate} does not claim %{role} or there's no ongoing elections for %{role}!"
+    delete:
+      desc: "Remove your vote for the specified member in elections of the provided role"
+      vote_not_found: "You don't vote for %{candidate} in %{role} elections!"
+      candidate_not_found: "%{candidate} does not claim %{role} or there's no ongoing elections for %{role}!"
+      success: "A vote for %{candidate} in %{role} elections has been removed!"
+      fail: "You don't support {claimer} to unsupport them!"
+      banned: "You can't remove your claim from %{role} elections until you're unbanned!"
+
+  leaderboard:
+    desc: "The leaderboard of candidates and their shares in the elections of the specified role"
+    title: "%{role} elections leaderboard"
+    table:
+      index: "No."
+      candidates: "Candidates"
+      share: "Share"
+    success: "%{role} elections leaderboard```%{table}```"
+    empty: "There's no %{role} candidates at the moment!"
+    election_not_found: "%{role} is not electable!"
+
+  announcements:
+    desc: "Set channel where I should post all election announcements, by default it's the server's system channel from the settings."
+    success: "Noted! From now on I'll post all election announcements in %{channel}!"
+    system: "Noted! From now on I'll post all election announcements in the server's system channel!"
+
+activity:
+  desc: "List of activities the members of the server do right now"
+  stat:
+    table:
+      activities: "Activities"
+      amount: "Participants"
+    success: "Right now members of %{guild} are participating in \n```%{table}```"
+  leaderboard:
+    desc: "Leaderboard of activity of the server's members"
+    empty: "The leaderboard is empty, please try later."
+    table:
+      index: "No."
+      members: "Members"
+      points: "Points"
+    success: "%{guild} leaderboard\n```%{table}``````Server value: %{server_value}```"
+
+
+#msg filter
+message_filter:
+  desc: "Filter configuration commands"
+  timezone: 
+    desc: "Specify your timezone for the time filter"
+    timezone_limit_error: "The timezone must be a number with + or - at beginning. Examples: +3; -8; +10; -12"
+    success: "The timezone has been successfuly set in the server!"
