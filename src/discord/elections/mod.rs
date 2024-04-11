@@ -313,7 +313,7 @@ pub async fn votes_list(
     role: Role,
     display_names: Option<bool>,
 ) -> Result<(), Error> {
-    let _ = ctx.defer().await;
+    let _ = ctx.defer_ephemeral().await;
     let response = match &ctx.data().db {
         Some(db) => {
             let locale = db::queries::guilds::locale(db, &ctx.guild_id().unwrap().to_string()).await;

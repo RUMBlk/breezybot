@@ -13,8 +13,8 @@ fn hello_world() -> &'static str {
 }
 
 #[handler]
-async fn database(db: Data<&Arc<&DatabaseConnection>>) -> Json<Vec<db::entities::test::Model>> {
-    let db:&DatabaseConnection = db.deref();
+async fn database(db: Data<&Arc<DatabaseConnection>>) -> Json<Vec<db::entities::test::Model>> {
+    let db: &DatabaseConnection = db.deref().as_ref();
     let tests = db::entities::prelude::Test::find().all(db).await;
     Json(tests.unwrap_or_default())
 }
@@ -27,8 +27,8 @@ struct MembersPost {
 }
 
 #[handler]
-async fn update_members(Path(id): Path<String>, Form(request): Form<MembersPost>, db: Data<&Arc<&DatabaseConnection>>, authorization: Data<&Arc<String>>) -> String {
-    let db: &DatabaseConnection = db.deref();
+async fn update_members(Path(id): Path<String>, Form(request): Form<MembersPost>, db: Data<&Arc<DatabaseConnection>>, authorization: Data<&Arc<String>>) -> String {
+    let db: &DatabaseConnection = db.deref().as_ref();
     match authorization.to_string() == request.authorization {
         true => {
             let mut member: db::entities::members::ActiveModel = db::queries::members::inselect(db, &request.guild_id, &id).await.unwrap().into_active_model();
@@ -43,7 +43,7 @@ pub fn poem(db: DatabaseConnection, authorization: String) -> AddDataEndpoint<Ad
     let app = Route::new()
         .at("/hello_world", get(hello_world))
         .at("/api/database", get(database))
-        .at("/api/guilds/:id/members", post(update_members))
+        .at("/api/guilds/members/:id", post(update_members))
         .with(AddData::new(Arc::new(db)))
         .with(AddData::new(Arc::new(authorization)));
     app

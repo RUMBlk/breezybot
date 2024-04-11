@@ -34,7 +34,7 @@ pub async fn leaderboard(
                         .column(db::entities::candidates::Column::User)
                         .column_as(db::entities::members::Column::Points.sum(), "points")
                         .limit(limit)
-                        .into_tuple::<(String, i64)>()
+                        .into_tuple::<(String, sea_orm::prelude::Decimal)>()
                         .all(db)
                         .await,
 
@@ -67,10 +67,11 @@ pub async fn leaderboard(
                                         true => member.display_name().to_string(),
                                         false => member.user.name,
                                     };
+                                    let points: f64 = points.round().try_into().unwrap();
                                     table.add_row(vec![
                                         (index).to_string(),
                                         name,
-                                        format!("{:.2}%", ((points as f64/total as f64) * 100_f64) as f64),
+                                        format!("{:.2}%", ((points/total as f64) * 100_f64) as f64),
                                     ]);
                                 }
                             }
