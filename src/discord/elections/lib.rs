@@ -146,21 +146,27 @@ pub async fn force(
                         .to_string();
                     }
                     for (operation, user_ids) in operations {
+                        match operation {
+                            host::Operations::Assign => { 
+                                if user_ids.len() > 0 {
+                                    announcement += t!("elections.announcement.promoted", locale=&locale).deref();
+                                }
+                            },
+                            host::Operations::Remove => {
+                                if user_ids.len() > 0 {
+                                    announcement += t!("elections.announcement.demoted", locale=&locale).deref();
+                                }
+                            }, 
+                        } 
                         for user_id in user_ids.to_owned() {
                             let member = guild.member(ctx.http(), user_id).await;
                             match member {
                                 Ok(mut member) => {
                                     if let Err(_) = match operation {
                                         host::Operations::Assign => { 
-                                            if user_ids.len() > 0 {
-                                                announcement += t!("elections.announcement.promoted", locale=&locale).deref();
-                                            }
                                             member.add_role(ctx.http(), role.id).await
                                         },
                                         host::Operations::Remove => {
-                                            if user_ids.len() > 0 {
-                                                announcement += t!("elections.announcement.demoted", locale=&locale).deref();
-                                            }
                                             member.remove_role(ctx.http(), role.id).await
                                         }, 
                                     } { lack_permissions = true; };
