@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::ops::Deref;
 
 use chrono::NaiveDate;
-use poise::serenity_prelude::{ CacheHttp, Message, Role, RoleId, Guild, CreateMessage };
+use poise::serenity_prelude::{ CacheHttp, Message, Role, RoleId, Guild, CreateMessage, ChannelId };
 use chrono;
 use sea_orm::{DatabaseConnection, QuerySelect, EntityTrait, ColumnTrait, QueryFilter, ActiveModelTrait, IntoActiveModel };
 
@@ -174,12 +174,24 @@ pub async fn affected(
                     }
 
                     if !announcement.is_empty() {
-                        if let Some(system_id) = guild.system_channel_id {
-                            let _ = system_id.send_message(ctx.http(), move |r: &mut CreateMessage<'_>| -> &mut CreateMessage<'_> {
-                                r
-                                .content(announcement)
-                            }).await;
+                        let mut announce_in = match db::entities::guilds::Entity::find()
+                        .filter(db::entities::guilds::Column::Guild.eq(guild.id.to_string()))
+                        .one(db)
+                        .await {
+                            Ok(Some(guild_db)) => guild_db.elections_channel.unwrap_or_default(), 
+                            _ => String::from(""),
+                        };
+                        if announce_in.is_empty() { 
+                            announce_in = match guild.system_channel_id {
+                                Some(channel_id) => channel_id.to_string(),
+                                None => String::from(""),
+                            }
                         }
+                        let announce_in = ChannelId::from(announce_in.parse::<u64>().unwrap());
+                        let _ = announce_in.send_message(ctx.http(), move |r: &mut CreateMessage<'_>| -> &mut CreateMessage<'_> {
+                            r
+                            .content(announcement)
+                        }).await;
                     }
                 }
             }

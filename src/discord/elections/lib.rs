@@ -3,7 +3,7 @@ use std::ops::Deref;
 use comfy_table::Table;
 use comfy_table::presets::UTF8_FULL_CONDENSED;
 
-use poise::serenity_prelude::{ ChannelId, CreateMessage, GuildId, Role };
+use poise::serenity_prelude::{ ChannelId, CreateMessage, GuildId, Role, Guild };
 use chrono;
 use sea_orm::{ ActiveModelTrait, IntoActiveModel, QuerySelect };
 use sea_orm::{ DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter };
@@ -116,6 +116,22 @@ pub async fn announcements(db: &DatabaseConnection, locale: String, guild_id: &S
     .to_string()
 }
 
+pub async fn post_in_the_channel(ctx: Context<'_>, db: &DatabaseConnection, guild: Guild, content: String) {
+    let mut announce_in = match db::entities::guilds::Entity::find()
+    .filter(db::entities::guilds::Column::Guild.eq(guild.id.to_string()))
+    .one(db)
+    .await {
+        Ok(Some(guild_db)) => guild_db.elections_channel.unwrap_or_default(), 
+        _ => String::from(""),
+    };
+    if announce_in.is_empty() { announce_in = guild.system_channel_id.unwrap_or(ctx.channel_id()).to_string() }
+    let announce_in = ChannelId::from(announce_in.parse::<u64>().unwrap());
+    let _ = announce_in.send_message(ctx.http(), move |r: &mut CreateMessage<'_>| -> &mut CreateMessage<'_> {
+        r
+        .content(content)
+    }).await;
+}
+
 pub async fn force(
     ctx: Context<'_>,
     db: &DatabaseConnection,
@@ -182,26 +198,13 @@ pub async fn force(
                     }
                     let now = chrono::Local::now().date_naive();
                     if let Some(date) = host::schedule_next(db, election, now).await {
-                        announcement += t!("elections.announcement.scheduled_for", locale=&locale, date=date.format("%B %-d, %C%y").to_string()).deref();
+                        announcement += t!("elections.announcement.scheduled_for", locale=&locale, role=role.name, date=date.format("%B %-d, %C%y").to_string()).deref();
                     }
 
                     if lack_permissions { announcement = t!("elections.force.lack_permissions", locale=&locale, role=role.name).to_string(); }
 
                     if !announcement.is_empty() && *announce {
-                        let mut announce_in = match db::entities::guilds::Entity::find()
-                        .filter(db::entities::guilds::Column::Guild.eq(guild.id.to_string()))
-                        .one(db)
-                        .await {
-                            Ok(Some(guild_db)) => guild_db.elections_channel.unwrap_or_default(), 
-                            _ => String::from(""),
-                        };
-                        if announce_in.is_empty() { announce_in = guild.system_channel_id.unwrap_or(ctx.channel_id()).to_string() }
-                        let announce_in = ChannelId::from(announce_in.parse::<u64>().unwrap());
-                        let content = announcement.clone();
-                        let _ = announce_in.send_message(ctx.http(), move |r: &mut CreateMessage<'_>| -> &mut CreateMessage<'_> {
-                            r
-                            .content(content)
-                        }).await;
+                        post_in_the_channel(ctx, db, guild, announcement.clone()).await;
                     }
 
                     match *ephemeral && !announce && !announcement.is_empty() {
