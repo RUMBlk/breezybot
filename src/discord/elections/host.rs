@@ -144,7 +144,7 @@ pub async fn affected(
                                                 announcement += "\n";
                                             }
                                             if let Some(date) = schedule_next(db, election, now).await {
-                                                if !announcement.is_empty() { announcement += t!("elections.announcement.scheduled_for", locale=&locale, date=date.to_string()).deref() };
+                                                if !announcement.is_empty() { announcement += t!("elections.announcement.scheduled_for", locale=&locale, date=date.to_string(), role=role.name).deref() };
                                             }
                                         }
                                     }
