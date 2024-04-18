@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use comfy_table::presets::UTF8_FULL_CONDENSED;
 use poise::serenity_prelude::{cache::FromStrAndCache, Role, RoleId};
 use comfy_table::Table;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, IntoActiveModel};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, IntoActiveModel, TryIntoModel};
 use crate::Context;
 
 use sea_orm::{ EntityTrait, QueryFilter, ColumnTrait, QuerySelect};
@@ -104,17 +104,7 @@ pub async fn add(ctx: Context<'_>, db: &DatabaseConnection, locale: String, role
 }
 
 pub async fn edit(db: &DatabaseConnection, locale: String, role: Role, number_of_positions: Option<i16>, schedule: Option<TimePeriods>) -> String {
-   let dberr = t!("errors.database.oops", locale=&locale);
-    let (next, period) = match schedule {
-        Some(each) => { 
-            (    
-                each.to_datetime_from_now(),
-                Some(each.to_string()),
-            )
-        },
-        None => (None, None),
-    };
-
+    let dberr = t!("errors.database.oops", locale=&locale);
     let response = match db::entities::elections::Entity::find()
     .filter(db::entities::elections::Column::Role.eq(role.id.to_string()))
     .one(db)
@@ -123,14 +113,18 @@ pub async fn edit(db: &DatabaseConnection, locale: String, role: Role, number_of
         Ok(model) => { 
             match model {
                 Some(election) => {
-                    let limit = number_of_positions.unwrap_or(election.limit);
                     let mut election = election.into_active_model();
-                    election.limit = sea_orm::Set(limit.clone());
-                    election.next = sea_orm::Set(next);
-                    election.each = sea_orm::Set(period.clone());
-                    match election.update(db).await {
-                        Ok(_) => t!("elections.roles.edit.success", locale=&locale, role=role.name, number_of_positions=limit, period=period.unwrap_or("-".to_string())),
-                        Err(_) => dberr,
+                    if let Some(limit) = number_of_positions { election.limit = sea_orm::Set(limit); };
+                    if let Some(each) = schedule { 
+                        election.next = sea_orm::Set(each.to_datetime_from_now());
+                        election.each = sea_orm::Set(Some(each.to_string()));
+                    }
+                    match (
+                        election.clone().update(db).await,
+                        election.try_into_model(),
+                    ) {
+                        (Ok(_), Ok(election)) => t!("elections.roles.edit.success", locale=&locale, role=role.name, number_of_positions=election.limit, period=election.each.unwrap_or(String::from("-"))),
+                        _ => dberr,
                     }
                 },
                 None => t!("elections.roles.edit.not_found", locale=&locale, role=role.name),

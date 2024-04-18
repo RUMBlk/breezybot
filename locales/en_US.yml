@@ -58,7 +58,7 @@ elections:
       success: "Elections for %{role} started!"
     edit: 
       desc: "Edit parameters of the specified election"
-      success: "### Set new parameters for %{role} elections:\nNumber of available positions:\n%{number_of_positions}\nHosted each: %{period}"
+      success: "### Set new parameters for %{role} elections:\nNumber of available positions: %{number_of_positions}\nHosted each: %{period}"
       not_found: "%{role} is not electable!"
     delete:
       desc: "Cancel elections for the specified role"
@@ -97,7 +97,7 @@ elections:
       desc: "Support the specified member who claims the role with your cloned points"
       exists: "You already support %{candidate} in %{role} elections!"
       success: "A vote for %{candidate} in %{role} has been added!"
-      candidate_not_found: "%{candidate} does not claim %{role} or there's no ongoing elections for %{role}!"
+      candidate_not_found: "%{candidate} does not claim %{role}!"
     delete:
       desc: "Remove your vote for the specified member in elections of the provided role"
       vote_not_found: "You don't vote for %{candidate} in %{role} elections!"
