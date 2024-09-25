@@ -1,6 +1,7 @@
 pub mod lib;
 pub mod activity;
 pub mod elections;
+pub mod localization;
 
 use poise::serenity_prelude::GatewayIntents;
 use poise::serenity_prelude::GuildId;
@@ -21,6 +22,7 @@ pub async fn build(data: Data) -> poise::FrameworkBuilder<Data, Box<(dyn std::er
     let mut commands = vec![ping()];
     commands.extend(activity::commands());
     commands.extend(elections::commands());
+    localization::apply_translation(&data.translations, &mut commands);
     let framework = poise::Framework::builder()
     .options(poise::FrameworkOptions {
         commands: commands,

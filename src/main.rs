@@ -1,6 +1,7 @@
 mod database;
 mod webserver;
 mod discord;
+mod localization;
 
 use sea_orm::DatabaseConnection;
 use shuttle_secrets::SecretStore;
@@ -14,13 +15,13 @@ struct Data {
     token: String,
     debug_guild: Option<u64>,
     db: Option<sea_orm::DatabaseConnection>,
-    //translations: discord::translation::Translations,
+    translations: localization::Translations,
 }
 
 impl Data {
     pub fn new(mode: String, token: String) -> Self {
-        //let translations = discord::translation::read_ftl().expect("failed to read translation files");
-        Self { mode, token, debug_guild: None, db: None, /*translations*/ }
+        let translations = localization::read_ftl().expect("failed to read translation files");
+        Self { mode, token, debug_guild: None, db: None, translations }
     }
 
     pub fn debug_guild(mut self, debug_guild: u64) -> Self {
@@ -54,21 +55,13 @@ struct Services {
 
 impl Services {
     async fn webserver(webserver: WebServer) -> Option<()> {
-        match webserver.route {
-            Some(route) => {
-                let server = poem::Server::new(poem::listener::TcpListener::bind(format!("0.0.0.0:{port}", port=webserver.port)));
-                Some(server.run(route).await.expect("oof"))
-            }
-            None => None,
-        }
+        let server = poem::Server::new(poem::listener::TcpListener::bind(format!("0.0.0.0:{port}", port=webserver.port)));
+        Some(server.run(webserver.route?).await.expect("oof"))
     }
     
     async fn discord_bot(framework: Option<poise::FrameworkBuilder<Data, Box<(dyn std::error::Error +
         std::marker::Send + Sync + 'static)>>>) -> Option<()> {
-        match framework {
-            Some(framework) => Some(framework.run().await.expect("oof")),
-            None => None,
-        }
+        Some(framework?.run().await.expect("oof"))
     }
 }
 
@@ -106,7 +99,7 @@ async fn main(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Result<S
             }
         }
         "DEBUG" => { 
-            let db_path = "../schema.sqlite"; 
+            let db_path = "schema.sqlite"; 
             let mut init = false;
 
             let file_path = Path::new(&db_path);
@@ -115,7 +108,7 @@ async fn main(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Result<S
                 init = true;
             };
             let uri ="sqlite://".to_owned().to_string()+&file_path.canonicalize().expect("fuck!").to_string_lossy().to_string();
-            //if init { database::setup_schema(uri.clone()).await; };
+            //if init { database::setup_schema(uri.clone()).await; }; //I may have accidentaly removed the file containing the function
             Some(uri)
         },
         _ => None,
@@ -130,10 +123,9 @@ async fn main(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Result<S
 
     let webserver = WebServer { 
         port: secret_store.get("WEBSERVER_PORT").unwrap_or("0".to_string()),
-        route: match db {
-            Some(ref db) => Some(webserver::poem(db.clone(), secret_store.get("AUTHORIZATION").unwrap_or("0000".to_string()))),
-            None => None,
-        } 
+        route: db.as_ref().and_then(|db| {
+            Some(webserver::poem(db.clone(), secret_store.get("AUTHORIZATION").unwrap_or("0000".to_string())))
+        }),
     };
 
     let discord_bot = match (
