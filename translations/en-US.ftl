@@ -20,5 +20,11 @@ points = Points
 activity-leaderboard-table = {$guild} leaderboard
     ```{$table}``````Server value: {$server_value}```
 
+elections-announcement = ## Election results
+    .role = ### Role: <@&%{role}>
+    .promoted = Promoted: 
+    .demoted = Demoted: 
+    .scheduled_for = Scheduled next %{role} elections for %{date}
+
 error = error
     .database-unreachable = The database is unreachable, please try later.

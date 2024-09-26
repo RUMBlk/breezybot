@@ -151,7 +151,7 @@ pub async fn force(
                 Some(election) => {
                     let mut lack_permissions = false;
                     let guild = ctx.guild().unwrap();
-                    let operations = host::form_results(db, election.clone(), guild.to_owned(), role).await;
+                    let operations = host::form_results(db, &election.clone(), guild.to_owned(), role).await;
                     let mut announcement = String::new();
                     if operations.len() > 0 {
                         announcement += &format!(
@@ -197,7 +197,7 @@ pub async fn force(
                         announcement += "\n";
                     }
                     let now = chrono::Local::now().date_naive();
-                    if let Some(date) = host::schedule_next(db, election, now).await {
+                    if let Some(date) = host::schedule_next(db, &election, now).await {
                         announcement += t!("elections.announcement.scheduled_for", locale=&locale, role=role.name, date=date.format("%B %-d, %C%y").to_string()).deref();
                     }
 

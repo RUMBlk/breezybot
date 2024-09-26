@@ -3,6 +3,7 @@ mod webserver;
 mod discord;
 mod localization;
 
+use localization::loc;
 use sea_orm::DatabaseConnection;
 use shuttle_secrets::SecretStore;
 use std::sync::Arc;

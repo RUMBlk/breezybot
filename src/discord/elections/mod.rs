@@ -12,7 +12,7 @@ use crate::Data;
 use crate::Context;
 use crate::Error; 
 use crate::database as db;
-use super::lib as dstools;
+use super::{ loc, lib as dstools };
 
 pub fn commands() -> Vec<poise::Command<Data, Box<dyn std::error::Error + Send + Sync>>> {
     vec![elections()]

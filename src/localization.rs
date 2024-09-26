@@ -2,6 +2,29 @@
 //! Wraps the fluent API and provides easy to use functions and macros for translation
 
 use crate::Error;
+macro_rules! loc {
+    ( $translations:expr, $locale:expr, $id:expr $(, $argname:ident: $argvalue:expr )* $(,)? ) => {{
+        #[allow(unused_mut)]
+        let mut args = fluent::FluentArgs::new();
+        $( args.set(stringify!($argname), $argvalue); )*
+
+        $translations.get($locale, $id, None, Some(&args))
+    }};
+    ( $translations:expr, $locale:expr, $id:expr ) => {{
+        $translations.get($locale, $id, None, None)
+    }};
+    ( $translations:expr, $locale:expr, $id:expr, $attr:expr ) => {{
+        $translations.get($locale, $id, Some($attr), None)
+    }};
+    ( $translations:expr, $locale:expr, $id:expr, $attr:expr $(, $argname:ident: $argvalue:expr )* $(,)? ) => {{
+        #[allow(unused_mut)]
+        let mut args = fluent::FluentArgs::new();
+        $( args.set(stringify!($argname), $argvalue); )*
+
+        $translations.get($locale, $id, Some($attr), Some(&args))
+    }};
+}
+pub(super) use loc;
 
 type FluentBundle = fluent::bundle::FluentBundle<
     fluent::FluentResource,

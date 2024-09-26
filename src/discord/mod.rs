@@ -3,6 +3,8 @@ pub mod activity;
 pub mod elections;
 pub mod localization;
 
+use localization::loc;
+
 use poise::serenity_prelude::GatewayIntents;
 use poise::serenity_prelude::GuildId;
 
