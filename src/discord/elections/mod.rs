@@ -195,7 +195,7 @@ pub async fn claims_add(
     let response = match &ctx.data().db {
         Some(db) => {
             let locale = db::queries::guilds::locale(db, &ctx.guild_id().unwrap().to_string()).await;
-            claims::add(ctx, db, locale, role, ctx.author().to_owned()).await
+            claims::add(ctx, db, role, ctx.author().to_owned()).await
         },
         None => t!("errors.database.unreachable").to_string(),
     };

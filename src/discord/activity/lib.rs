@@ -7,14 +7,11 @@ use sea_orm::DatabaseConnection;
 use super::loc;
 use crate::Context;
 
-use sea_orm;
-use sea_orm::{ QueryOrder, QuerySelect };
-use sea_orm::{ EntityTrait, QueryFilter, ColumnTrait};
 use crate::database as db;
 
 pub async fn stat(ctx: Context<'_>) -> String {
     let (Some(guild), Some(guild_id)) 
-        = (ctx.guild(), ctx.guild_id()) else { return loc!(ctx, "error", "cmd-not-in-guild") }; 
+        = (ctx.guild(), ctx.guild_id()) else { return loc!(ctx, "cmd-not-in-guild") }; 
     let mut activities = HashMap::<String, i16>::new();
 
     for presence in guild.presences.values() {
@@ -50,14 +47,11 @@ pub async fn leaderboard(
     display_names: Option<bool>,
 ) -> String {
     let (Some(guild), Some(guild_id)) 
-        = (ctx.guild(), ctx.guild_id()) else { return loc!(ctx, "error", "cmd-not-in-guild") }; 
+        = (ctx.guild(), ctx.guild_id()) else { return loc!(ctx, "cmd-not-in-guild") }; 
 
-    let Ok(db_members) = db::entities::prelude::Members::find()
-        .filter(db::entities::members::Column::Guild.eq(&guild_id.to_string()))
-        .order_by_desc(db::entities::members::Column::Points)
-        .limit(limit.unwrap_or(10))
+    let Ok(db_members) = db::queries::members::leaderboard(&guild_id.to_string(), limit)
         .all(db)
-        .await else { return loc!(ctx, "error", "database-unreachable") };
+        .await else { return loc!(ctx, "database-unreachable") };
 
     let mut leaderboard = Table::new();
     leaderboard
@@ -71,7 +65,11 @@ pub async fn leaderboard(
     let mut index = 0;
     for db_member in db_members {
         let username;
-        if let Some(member) = ctx.cache().member::<GuildId, u64>(guild_id, db_member.user.parse().unwrap_or_default()) {
+        let Ok(userid) = db_member.user.parse()
+            .map_err(|value| { eprintln!("{}", value); }) 
+        else { return loc!(ctx, "database-oops") };
+        
+        if let Some(member) = ctx.cache().member::<GuildId, u64>(guild_id, userid) {
             index += 1;
             username = match display_names.unwrap_or(false) {
                 true => member.display_name().to_string(),
@@ -80,6 +78,7 @@ pub async fn leaderboard(
         } else {
             username = db_member.user;
         };
+
         leaderboard.add_row(vec![
             (index).to_string(),
             username,
@@ -87,8 +86,18 @@ pub async fn leaderboard(
         ]);
     };
 
+    let server_value = db::queries::members::server_value(db, &guild_id.to_string()).await
+        .ok()
+        .unwrap_or_default()
+        .and_then(|v| { Some(v.floor().to_string()) })
+        .unwrap_or(loc!(ctx, "activity-leaderboard-table", "server-value-err"));
+
     if leaderboard.row_count() > 0 {
-        loc!(ctx, "activity-leaderboard-table", guild: guild.name, table: leaderboard.to_string(), server_value: db::queries::members::server_value(db, &guild_id.to_string()).await)
+        loc!(
+                ctx, "activity-leaderboard-table",
+                guild: guild.name, table: leaderboard.to_string(),
+                server_value: server_value,
+        )
     } else {
         loc!(ctx, "activity-leaderboard-empty")
     }

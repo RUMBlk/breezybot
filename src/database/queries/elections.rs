@@ -1,9 +1,13 @@
 use sea_orm::*;
 use crate::database as db;
 use db::entities::*;
-use db::entities::prelude::*;
 
-pub async fn inselect(db: &DatabaseConnection, guild_id: String, role_id: String, col_limit: Option<i16>) -> Option<elections::Model> {
+pub fn find(role_id: String) -> sea_orm::Select<elections::Entity> {
+    elections::Entity::find()
+        .filter(elections::Column::Role.eq(role_id))
+}
+
+/*pub async fn inselect(db: &DatabaseConnection, guild_id: String, role_id: String, col_limit: Option<i16>) -> Option<elections::Model> {
     match (
         elections::Entity::insert(
             elections::ActiveModel {
@@ -30,4 +34,4 @@ pub async fn inselect(db: &DatabaseConnection, guild_id: String, role_id: String
         (Ok(_), Ok(row)) => row,
         _ => None,
     }
-}
+}*/

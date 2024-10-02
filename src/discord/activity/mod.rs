@@ -41,7 +41,7 @@ pub async fn leaderboard(
     let _ = ctx.defer().await;
     let response = if let Some(db) = &ctx.data().db {
         lib::leaderboard(ctx, db, limit, display_names).await
-    } else { loc!(ctx, "error", "database-unreachable") };
+    } else { loc!(ctx, "database-unreachable") };
     let _ = ctx.reply(response).await;
     Ok(())
 }

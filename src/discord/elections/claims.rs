@@ -3,41 +3,27 @@ use sea_orm::{ EntityTrait, QueryFilter, ColumnTrait};
 use poise::serenity_prelude::{ Mentionable, Role, User };
 use crate::database as db;
 use crate::Context;
+use super::loc;
 
-pub async fn add(ctx: Context<'_>, db: &DatabaseConnection, locale: String, role: Role, user: User) -> String {
-    let dberr = t!("errors.database.oops", locale=&locale);
-    match db::entities::elections::Entity::find()
-    .filter(db::entities::elections::Column::Role.eq(role.id.to_string()))
-    .one(db)
-    .await {
-        Ok(model) => { 
-            match model {
-                Some(row) => {
-                    match db::entities::candidates::Entity::insert(
-                        db::entities::candidates::ActiveModel {
-                            election: sea_orm::Set(row.id),
-                            user: sea_orm::Set(user.id.to_string()),
-                            ..Default::default()
-                        }
-                    )
-                    .exec(db)
-                    .await {
-                        Ok(_) => {
-                            let username = match user.nick_in(ctx, ctx.guild_id().unwrap()).await {
-                                Some(name) => name,
-                                None => user.name,
-                            };
-                            t!("elections.claims.add.success", locale=&locale, role=role.name, user=username)
-                        },
-                        Err(_) => t!("elections.claims.add.exists", locale=&locale, role=role.name),
-                    }
-                },
-                None => t!("elections.claims.add.elections_not_found", locale=&locale, role=role.name),
-            }
-        },
-        Err(_) => dberr,
-    }
-    .to_string()
+pub async fn add(ctx: Context<'_>, db: &DatabaseConnection, role: Role, user: User) -> String {
+    let Some(guild_id) = ctx.guild_id() else { return loc!(ctx, "cmd-not-in-guild") }; 
+
+    let Ok(Some(elections)) = db::queries::elections::find(role.id.to_string()).one(db).await
+    else { return loc!(ctx, "elections-not-found").to_string() };
+
+    let Ok(_) = db::entities::candidates::Entity::insert(
+        db::entities::candidates::ActiveModel {
+            election: sea_orm::Set(elections.id),
+            user: sea_orm::Set(user.id.to_string()),
+            ..Default::default()
+        }
+    ).exec(db).await else {
+        return loc!(ctx, "elections-claims-add", "exists")
+    };
+
+    loc!(ctx, "elections-claims-add", "success",
+        role: role.name, user: user.nick_in(ctx, guild_id).await.unwrap_or(user.name)
+    )
 }
 
 pub async fn delete(ctx: Context<'_>, db: &DatabaseConnection, locale: String, role: Role, user: User) -> String {

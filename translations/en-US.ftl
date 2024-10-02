@@ -19,12 +19,16 @@ members = Members
 points = Points
 activity-leaderboard-table = {$guild} leaderboard
     ```{$table}``````Server value: {$server_value}```
+    .server-value-err = Failed to calculate server score.
 
 elections-announcement = ## Election results
-    .role = ### Role: <@&%{role}>
+    .role = ### Role: <@&{$role}>
     .promoted = Promoted: 
     .demoted = Demoted: 
-    .scheduled_for = Scheduled next %{role} elections for %{date}
+    .scheduled_for = Scheduled next {$role} elections for {$date}
 
-error = error
-    .database-unreachable = The database is unreachable, please try later.
+cmd-not-in-guild = This command can be executed only in a guild!
+database-unreachable = The database is unreachable, please try later.
+database-oops = Oops! Something went wrong with the database!
+
+elections-not-found = {$role} is not electable!
