@@ -1,148 +1,117 @@
-use sea_orm::{ActiveModelTrait, DatabaseConnection, IntoActiveModel};
-use sea_orm::{ EntityTrait, QueryFilter, ColumnTrait};
-use poise::serenity_prelude::{ Mentionable, Role, User };
-use crate::database as db;
+use sea_orm::DbErr;
+use poise::serenity_prelude::{ Role, User };
+
 use crate::Context;
+use crate::Error; 
+use crate::database as db;
 use super::loc;
 
-pub async fn add(ctx: Context<'_>, db: &DatabaseConnection, role: Role, user: User) -> String {
-    let Some(guild_id) = ctx.guild_id() else { return loc!(ctx, "cmd-not-in-guild") }; 
+#[poise::command(slash_command)]
+pub async fn claims_add(
+    ctx: Context<'_>,
+    role: Role,
+) -> Result<(), Error> {
+    let _ = ctx.defer().await;
+    let _ = ctx.reply(async move {
+        let Some(guild_id) = ctx.guild_id() else { return loc!(ctx, "cmd-not-in-guild") }; 
+        let Some(db) = &ctx.data().db else { return loc!(ctx, "database-unreachable") };
 
-    let Ok(Some(elections)) = db::queries::elections::find(role.id.to_string()).one(db).await
-    else { return loc!(ctx, "elections-not-found").to_string() };
+        if let Ok(Some(is_active)) = db::queries::candidates::is_active(db, role.id.get(), ctx.author().id.get()).await {
+            if is_active { return loc!(ctx, "elections-candidate-exists") }
+        };
+        if !db::queries::elections::exists(db, role.id.get()).await { return loc!(ctx, "elections-not-found", role: role.name) }
 
-    let Ok(_) = db::entities::candidates::Entity::insert(
-        db::entities::candidates::ActiveModel {
-            election: sea_orm::Set(elections.id),
-            user: sea_orm::Set(user.id.to_string()),
-            ..Default::default()
+        if let Ok(_) = db::queries::candidates::register(db, role.id.get(), ctx.author().id.get()).await {
+            loc!(ctx, "elections-claim-added", role: role.name,
+                user: ctx.author().nick_in(ctx, guild_id).await.unwrap_or(ctx.author().name.clone())
+            )
+        } else { loc!(ctx, "database-oops") }
+    }.await).await;
+    Ok(())
+}
+
+#[poise::command(slash_command)]
+pub async fn claims_remove(
+    ctx: Context<'_>,
+    role: Role,
+) -> Result<(), Error> {
+    let _ = ctx.defer().await;
+    let _ = ctx.reply(async move {
+        if ctx.guild().is_none() { return loc!(ctx, "cmd-not-in-guild") }; 
+        let Some(db) = &ctx.data().db else { return loc!(ctx, "database-unreachable") };
+        if !db::queries::elections::exists(db, role.id.get()).await { return loc!(ctx, "elections-not-found", role: role.name) }
+
+        let username = ctx.author().nick_in(ctx, ctx.guild_id().unwrap()).await.unwrap_or(ctx.author().name.clone());
+
+        if let Ok(v) = db::queries::candidates::unregister(db, role.id.get(), ctx.author().id.get()).await {
+            if v.rows_affected == 0 { loc!(ctx, "claim-not-found", role: role.name) }
+            else {  loc!(ctx, "elections-claim-removed", role: role.name, user: username) }
+        } else { loc!(ctx, "database-oops") }
+    }.await).await;
+    Ok(())
+}
+
+#[poise::command(slash_command, required_permissions="MANAGE_ROLES")]
+pub async fn claims_kick(
+    ctx: Context<'_>,
+    role: Role,
+    user: User,
+) -> Result<(), Error> {
+    let _ = ctx.defer().await;
+    let _ = ctx.reply(async move {
+        let (Some(guild), Some(author_member)) = (
+            ctx.guild().and_then(|v| { Some((*v).clone())}),
+            ctx.author_member().await
+        )
+        else { return loc!(ctx, "cmd-not-in-guild") };
+        let Some(db) = &ctx.data().db else { return loc!(ctx, "database-unreachable") };
+        let Some(highest_role) = guild.member_highest_role(&author_member) else { return loc!(ctx, "unknown-highest-role") };
+        if *highest_role < role || ctx.guild().unwrap().owner_id != ctx.author().id { return loc!(ctx, "insufficient_role_position", role: role.name); }
+
+        if !db::queries::elections::exists(db, role.id.get()).await { return loc!(ctx, "elections-not-found", role: role.name) }
+
+        if let Ok(v) = db::queries::candidates::unregister(db, role.id.get(), user.id.get()).await {
+            if v.rows_affected == 0 { loc!(ctx, "claim-not-found", role: role.name) }
+            else {  loc!(ctx, "elections-claim-removed", role: role.name, user: user.name ) }
+        } else { loc!(ctx, "database-oops") }
+    }.await).await;
+    Ok(())
+}
+
+#[poise::command(slash_command, required_permissions="MANAGE_ROLES")]
+pub async fn claims_ban(
+    ctx: Context<'_>,
+    role: Role,
+    user: User,
+    days: Option<i64>,
+    weeks: Option<i64>,
+    years: Option<i64>,
+) -> Result<(), Error> {
+    let _ = ctx.defer().await;
+    let _ = ctx.reply(async move {
+        let (Some(guild), Some(author_member)) = (
+            ctx.guild().and_then(|v| { Some((*v).clone())}),
+            ctx.author_member().await
+        )
+        else { return loc!(ctx, "cmd-not-in-guild") };
+        let Some(db) = &ctx.data().db else { return loc!(ctx, "database-unreachable") };
+        let Some(highest_role) = guild.member_highest_role(&author_member) else { return loc!(ctx, "unknown-highest-role") };
+        if *highest_role < role || ctx.guild().unwrap().owner_id != ctx.author().id { return loc!(ctx, "insufficient_role_position", role: role.name); }
+
+        let duration = chrono::Duration::days(days.unwrap_or_default())
+            .checked_add(&chrono::Duration::weeks(weeks.unwrap_or_default()))
+            .and_then(|v| { v.checked_add(&chrono::Duration::days(365*years.unwrap_or_default())) })
+            .unwrap_or_default();
+
+        if !db::queries::elections::exists(db, role.id.get()).await { return loc!(ctx, "elections-not-found", role: role.name) }
+
+        if let Err(e) = db::queries::candidates::ban(db, role.id.get(), user.id.get(), duration).await {
+            if let DbErr::RecordNotInserted = e {
+                loc!(ctx, "elections-claim-already-banned", role: role.name, user: user.name )
+            } else { loc!(ctx, "database-oops") }
+        } else {
+            loc!(ctx, "elections-claim-banned", role: role.name, user: user.name )
         }
-    ).exec(db).await else {
-        return loc!(ctx, "elections-claims-add", "exists")
-    };
-
-    loc!(ctx, "elections-claims-add", "success",
-        role: role.name, user: user.nick_in(ctx, guild_id).await.unwrap_or(user.name)
-    )
-}
-
-pub async fn delete(ctx: Context<'_>, db: &DatabaseConnection, locale: String, role: Role, user: User) -> String {
-    let dberr = t!("errors.database.oops", locale=&locale);
-    match db::entities::elections::Entity::find()
-    .filter(db::entities::elections::Column::Role.eq(role.id.to_string()))
-    .one(db)
-    .await {
-        Ok(model) => {
-            match model {
-                Some(election) => {
-                    match db::entities::candidates::Entity::find()
-                    .filter(
-                        sea_orm::Condition::all()
-                        .add(db::entities::candidates::Column::Election.eq(election.id))
-                        .add(db::entities::candidates::Column::User.eq(user.id.to_string()))
-                    )
-                    .one(db)
-                    .await {
-                        Ok(claim_model) => {
-                            match claim_model {
-                                Some(claim) => {
-                                    match claim.banned_until.unwrap_or_default() > chrono::Local::now() {
-                                        true => {
-                                            match db::entities::candidates::Entity::delete(claim.into_active_model()).exec(db).await {
-                                                Ok(_) => { 
-                                                    let username = match user.nick_in(ctx, ctx.guild_id().unwrap()).await {
-                                                        Some(name) => name,
-                                                        None => user.name,
-                                                    };
-                                                    t!("elections.claims.delete.success", locale=&locale, role=role.name, user=username)
-                                                },
-                                                Err(_) => dberr,
-                                            }
-                                        },
-                                        false => {
-                                            t!("elections.claims.delete.banned", locale=&locale, role=role.name)
-                                        }
-                                    }
-                                }
-                                None => t!("elections.claims.delete.claim_not_found", locale=&locale, role=role.name),
-                            }
-                        }
-                        Err(_) => dberr,
-                    }
-                },
-                None => t!("elections.claims.delete.election_not_found", locale=&locale, role=role.name),
-            } 
-        },
-        Err(_) => dberr,
-    }
-    .to_string()
-}
-
-pub async fn edit_ban(db: &DatabaseConnection, locale: &String, role: &Role, user: &User, banned_until: Option<chrono::DateTime<chrono::FixedOffset>>) -> Option<String> {
-    let dberr = Some(t!("errors.database.oops", locale=&locale).to_string());
-    match db::entities::elections::Entity::find()
-    .filter(db::entities::elections::Column::Role.eq(role.id.to_string()))
-    .one(db)
-    .await {
-        Ok(model) => {
-            match model {
-                Some(election) => {
-                    let _ = db::entities::candidates::Entity::insert(
-                        db::entities::candidates::ActiveModel {
-                            election: sea_orm::Set(election.id),
-                            user: sea_orm::Set(user.id.to_string()),
-                            ..Default::default()
-                        }
-                    )
-                    .exec(db)
-                    .await;
-
-                    match db::entities::candidates::Entity::find()
-                    .filter(
-                        sea_orm::Condition::all()
-                        .add(db::entities::candidates::Column::Election.eq(election.id))
-                        .add(db::entities::candidates::Column::User.eq(user.id.to_string()))
-                    )
-                    .one(db)
-                    .await {
-                        Ok(claim_model) => {
-                            match claim_model {
-                                Some(claim) => {
-                                    let mut claim = claim.into_active_model();
-                                    claim.banned_until = sea_orm::Set(banned_until);
-                                    match claim.update(db).await {
-                                        Ok(_) => None,
-                                        Err(_) => dberr,
-                                    }
-                                }
-                                None => Some(t!("elections.claims.ban.claim_not_found", locale=&locale, role=role.name).to_string()),
-                            }
-                        }
-                        Err(_) => dberr,
-                    }
-                },
-                None => Some(t!("elections.claims.ban.election_not_found", locale=&locale, role=role.name).to_string()),
-            } 
-        },
-        Err(_) => dberr,
-    }
-}
-
-pub async fn ban(db: &DatabaseConnection, locale: String, role: Role, user: User, days: Option<u8>, weeks: Option<u8>, months: Option<u8>, years: Option<u8>) -> String {
-    let mut banned_until = chrono::Local::now();
-    if let Some(days) = days { banned_until = banned_until.checked_add_days(chrono::Days::new(days.into())).unwrap_or(banned_until);  }
-    if let Some(weeks) = weeks { banned_until = banned_until.checked_add_days(chrono::Days::new(7_u64*weeks as u64)).unwrap_or(banned_until);  }
-    if let Some(months) = months { banned_until = banned_until.checked_add_months(chrono::Months::new(months.into())).unwrap_or(banned_until); }
-    if let Some(years) = years { banned_until = banned_until.checked_add_months(chrono::Months::new(12_u32*years as u32)).unwrap_or(banned_until); }
-    match edit_ban(db, &locale, &role, &user, Some(banned_until.into())).await {
-        Some(response) => response,
-        None => t!("elections.claims.ban.success", locale=&locale, role=role.name, user=user.mention(), banned_until=banned_until.timestamp()).to_string(),
-    }
-}
-
-pub async fn unban(db: &DatabaseConnection, locale: String, role: Role, user: User) -> String {
-    match edit_ban(db, &locale, &role, &user, None).await {
-        Some(response) => response,
-        None => t!("elections.claims.unban.success", locale=&locale, role=role.name, user=user.mention()).to_string(),
-    }
+    }.await).await;
+    Ok(())
 }

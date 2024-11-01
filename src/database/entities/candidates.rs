@@ -6,10 +6,10 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "candidates")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
-    pub election: i64,
-    #[sea_orm(column_type = "Text")]
-    pub user: String,
+    pub id: u64,
+    pub elections: u64,
+    pub user: u64,
+    pub active: bool,
     pub banned_until: Option<DateTimeWithTimeZone>,
 }
 
@@ -17,8 +17,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::elections::Entity",
-        from = "Column::Election",
-        to = "super::elections::Column::Id",
+        from = "Column::Elections",
+        to = "super::elections::Column::Role",
         on_update = "Cascade",
         on_delete = "Cascade"
     )]

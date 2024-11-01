@@ -2,6 +2,7 @@
 //! Wraps the fluent API and provides easy to use functions and macros for translation
 
 use crate::Error;
+#[macro_export]
 macro_rules! loc {
     ( $translations:expr, $locale:expr, $id:expr $(, $argname:ident: $argvalue:expr )* $(,)? ) => {{
         #[allow(unused_mut)]
@@ -24,7 +25,7 @@ macro_rules! loc {
         $translations.get($locale, $id, Some($attr), Some(&args))
     }};
 }
-pub(super) use loc;
+
 
 type FluentBundle = fluent::bundle::FluentBundle<
     fluent::FluentResource,

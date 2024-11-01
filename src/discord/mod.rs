@@ -3,10 +3,11 @@ pub mod activity;
 pub mod elections;
 pub mod localization;
 
+use std::ops::Deref;
+
 use localization::loc;
 
-use poise::serenity_prelude::GatewayIntents;
-use poise::serenity_prelude::GuildId;
+use poise::serenity_prelude::{ GatewayIntents, ClientBuilder, Client, FullEvent as Event, GuildId };
 
 use crate::Context;
 use crate::Data;
@@ -19,11 +20,11 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn build(data: Data) -> poise::FrameworkBuilder<Data, Box<(dyn std::error::Error + std::marker::Send + Sync + 'static)>> {
+pub async fn build(data: Data) -> Option<Client> {
     let token = data.token.clone();
     let mut commands = vec![ping()];
     commands.extend(activity::commands());
-    commands.extend(elections::commands());
+    //commands.extend(elections::commands());
     localization::apply_translation(&data.translations, &mut commands);
     let framework = poise::Framework::builder()
     .options(poise::FrameworkOptions {
@@ -31,14 +32,14 @@ pub async fn build(data: Data) -> poise::FrameworkBuilder<Data, Box<(dyn std::er
         event_handler: |ctx, event, _framework, data| {
             Box::pin(async move {
                 match event {
-                    poise::Event::Ready { data_about_bot } => {
+                    Event::Ready { data_about_bot } => {
                         eprintln!("Successfully logged in as {}", data_about_bot.user.name);
                     },
-                    poise::Event::Message { new_message } => {
+                    Event::Message { new_message } => {
                         activity::on_message(ctx, data, new_message.clone()).await;
-                        elections::on_message(ctx, data, new_message.clone()).await;
+                        //elections::on_message(ctx, data, new_message.clone()).await;
                     }
-                    poise::Event::ReactionAdd { add_reaction } => {
+                    Event::ReactionAdd { add_reaction } => {
                         activity::on_reaction(ctx, data, add_reaction.clone()).await;
                     }
                     _ => {},
@@ -48,7 +49,7 @@ pub async fn build(data: Data) -> poise::FrameworkBuilder<Data, Box<(dyn std::er
         },
         ..Default::default()
     })
-    .intents(GatewayIntents::all())
+    //.intents(GatewayIntents::all())
     .setup(|ctx, _ready, framework| {
         Box::pin(async move {
             match data.mode.as_str() {
@@ -59,6 +60,10 @@ pub async fn build(data: Data) -> poise::FrameworkBuilder<Data, Box<(dyn std::er
             Ok(data)
         })
     })
-    .token(token);
-    framework
+    .build();
+
+    ClientBuilder::new(token, GatewayIntents::all())
+        .framework(framework)
+        .await
+        .ok()
 }

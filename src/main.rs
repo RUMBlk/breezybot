@@ -3,9 +3,8 @@ mod webserver;
 mod discord;
 mod localization;
 
-use localization::loc;
 use sea_orm::DatabaseConnection;
-use shuttle_secrets::SecretStore;
+use shuttle_runtime::SecretStore;
 use std::sync::Arc;
 use std::path::Path;
 use std::fs::File;
@@ -49,9 +48,7 @@ struct WebServer {
 }
 struct Services {
     webserver: WebServer,
-    discord_bot:
-        Option<poise::FrameworkBuilder<Data, Box<(dyn std::error::Error +
-         std::marker::Send + Sync + 'static)>>>,
+    discord_bot: Option<poise::serenity_prelude::Client>,
 }
 
 impl Services {
@@ -60,9 +57,8 @@ impl Services {
         Some(server.run(webserver.route?).await.expect("oof"))
     }
     
-    async fn discord_bot(framework: Option<poise::FrameworkBuilder<Data, Box<(dyn std::error::Error +
-        std::marker::Send + Sync + 'static)>>>) -> Option<()> {
-        Some(framework?.run().await.expect("oof"))
+    async fn discord_bot(client: Option<poise::serenity_prelude::Client>) -> Option<()> {
+        Some(client?.start().await.expect("oof"))
     }
 }
 
@@ -82,7 +78,7 @@ impl shuttle_runtime::Service for Services {
 }
 
 #[shuttle_runtime::main]
-async fn main(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Result<Services, shuttle_runtime::Error> {
+async fn main(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> Result<Services, shuttle_runtime::Error> {
     rust_i18n::set_locale("en_US");
     let mode = secret_store.get("MODE").unwrap_or("DEBUG".to_string());
 
@@ -144,14 +140,12 @@ async fn main(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Result<S
         },
     ) {
         (Some(token), Ok(debug_guild)) => {
-            Some(
-                discord::build(
-                    Data::new(mode, token)
-                    .debug_guild(debug_guild)
-                    .db_option(db)
-                )
-                .await
+            discord::build(
+                Data::new(mode, token)
+                .debug_guild(debug_guild)
+                .db_option(db)
             )
+            .await
         }
         _ => None
     };

@@ -2,31 +2,20 @@
 use crate::{Data, Error, localization::{ Translations, format } };
 
 /// Macro to retrieve a translation, optionally with arguments. Use like:
-/// - `tr!(ctx, "identifier")` (no arguments)
-/// - `tr!(ctx, "identifier", arg1: VALUE1, arg2: VALUE2)` (with arguments)
+/// - `loc!(ctx, "identifier")` (no arguments)
+/// - `loc!(ctx, "identifier", arg1: VALUE1, arg2: VALUE2)` (with arguments)
+/// - 'loc!(ctx, "identifier", "attribute")' (with attribute)
+/// - 'loc!(ctx, "identifier", "attribute", arg1: VALUE1, arg2: VALUE2)' (with attribute and arguments)
 ///
-/// Doesn't support retrieving message attributes
+/// Does support retrieving message attributes
 macro_rules! loc {
-    ( $ctx:expr, $id:expr $(, $argname:ident: $argvalue:expr )* $(,)? ) => {{
-        #[allow(unused_mut)]
-        let mut args = fluent::FluentArgs::new();
-        $( args.set(stringify!($argname), $argvalue); )*
-
-        $ctx.data().translations.get($ctx.locale(), $id, None, Some(&args))
-    }};
-    ( $ctx:expr, $id:expr ) => {{
-        $ctx.data().translations.get($ctx.locale(), $id, None, None)
-    }};
-    ( $ctx:expr, $id:expr, $attr:expr ) => {{
-        $ctx.data().translations.get($ctx.locale(), $id, Some($attr), None)
-    }};
-    ( $ctx:expr, $id:expr, $attr:expr $(, $argname:ident: $argvalue:expr )* $(,)? ) => {{
-        #[allow(unused_mut)]
-        let mut args = fluent::FluentArgs::new();
-        $( args.set(stringify!($argname), $argvalue); )*
-
-        $ctx.data().translations.get($ctx.locale(), $id, Some($attr), Some(&args))
-    }};
+    ($ctx:expr, $id:expr $(, $argname:ident: $argvalue:expr )* $(,)?) => {
+        crate::loc!($ctx.data().translations, $ctx.locale(), $id $(, $argname: $argvalue )*)
+    };
+    
+    ($ctx:expr, $id:expr, $attr:expr $(, $argname:ident: $argvalue:expr )* $(,)?) => {
+        crate::loc!($ctx.data().translations, $ctx.locale(), $id, $attr $(, $argname: $argvalue )*)
+    };
 }
 pub(super) use loc;
 

@@ -29,6 +29,6 @@ elections-announcement = ## Election results
 
 cmd-not-in-guild = This command can be executed only in a guild!
 database-unreachable = The database is unreachable, please try later.
-database-oops = Oops! Something went wrong with the database!
+database-oops = Failed to execute the operation. Please verify the correctness of provided arguments.
 
-elections-not-found = {$role} is not electable!
+elections-not-found = **{$role}** is not electable!

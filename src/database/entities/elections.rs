@@ -6,15 +6,11 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "elections")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
-    #[sea_orm(column_type = "Text")]
-    pub guild: String,
-    #[sea_orm(column_type = "Text", unique)]
-    pub role: String,
+    pub role: u64,
     pub limit: i16,
     pub next: Option<Date>,
     #[sea_orm(column_type = "Text", nullable)]
-    pub each: Option<String>,
+    pub schedule: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
