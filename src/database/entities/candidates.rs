@@ -5,10 +5,12 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "candidates")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: u64,
-    pub elections: u64,
-    pub user: u64,
+    #[sea_orm(primary_key, column_type = "Decimal(Some((20, 0)))")]
+    pub id: Decimal,
+    #[sea_orm(column_type = "Decimal(Some((20, 0)))")]
+    pub elections: Decimal,
+    #[sea_orm(column_type = "Decimal(Some((20, 0)))")]
+    pub user: Decimal,
     pub active: bool,
     pub banned_until: Option<DateTimeWithTimeZone>,
 }

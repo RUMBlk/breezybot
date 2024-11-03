@@ -1,5 +1,5 @@
 use poem::{get, handler, post, web::{ Form, Json, Path, Data}, Route, middleware::AddData, EndpointExt};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel, Set};
+use sea_orm::{ DatabaseConnection, EntityTrait };
 use serde::Deserialize;
 use std::{ops::Deref, sync::Arc};
 use poem::middleware::AddDataEndpoint;
@@ -22,7 +22,7 @@ async fn database(db: Data<&Arc<DatabaseConnection>>) -> Json<Vec<db::entities::
 #[derive(Deserialize)]
 struct MembersPost {
     authorization: String,
-    guild_id: String,
+    guild_id: u64,
     points: i64,
 }
 
@@ -31,9 +31,7 @@ async fn update_members(Path(id): Path<String>, Form(request): Form<MembersPost>
     let db: &DatabaseConnection = db.deref().as_ref();
     match authorization.to_string() == request.authorization {
         true => {
-            let mut member: db::entities::members::ActiveModel = db::queries::members::inselect(db, &request.guild_id, &id).await.unwrap().into_active_model();
-            member.points = Set(member.points.unwrap() + request.points);
-            member.update(db).await.expect("well, oof");
+            db::queries::members::add_points(db, request.guild_id, id.parse().expect("oops"), request.points).await.expect("well, oof");
             "Ok!".to_string()
         },
         false => "Auth sucks".to_string(),

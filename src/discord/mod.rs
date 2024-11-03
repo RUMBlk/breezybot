@@ -3,8 +3,6 @@ pub mod activity;
 pub mod elections;
 pub mod localization;
 
-use std::ops::Deref;
-
 use localization::loc;
 
 use poise::serenity_prelude::{ GatewayIntents, ClientBuilder, Client, FullEvent as Event, GuildId };
@@ -24,7 +22,7 @@ pub async fn build(data: Data) -> Option<Client> {
     let token = data.token.clone();
     let mut commands = vec![ping()];
     commands.extend(activity::commands());
-    //commands.extend(elections::commands());
+    commands.extend(elections::commands());
     localization::apply_translation(&data.translations, &mut commands);
     let framework = poise::Framework::builder()
     .options(poise::FrameworkOptions {
@@ -37,7 +35,7 @@ pub async fn build(data: Data) -> Option<Client> {
                     },
                     Event::Message { new_message } => {
                         activity::on_message(ctx, data, new_message.clone()).await;
-                        //elections::on_message(ctx, data, new_message.clone()).await;
+                        elections::on_message(ctx, data, new_message.clone()).await;
                     }
                     Event::ReactionAdd { add_reaction } => {
                         activity::on_reaction(ctx, data, add_reaction.clone()).await;
@@ -53,7 +51,7 @@ pub async fn build(data: Data) -> Option<Client> {
     .setup(|ctx, _ready, framework| {
         Box::pin(async move {
             match data.mode.as_str() {
-                "DEBUG" => { if let Some(debug_guild) = data.debug_guild { let _ = poise::builtins::register_in_guild(ctx, &framework.options().commands, GuildId::from(debug_guild)).await; }},
+                "DEBUG" => { if let Some(debug_guild) = data.debug_guild { poise::builtins::register_in_guild(ctx, &framework.options().commands, GuildId::from(debug_guild)).await.expect(""); }},
                 "PRODUCTION" => { poise::builtins::register_globally(ctx, &framework.options().commands).await?; },
                 _ => {},
             }

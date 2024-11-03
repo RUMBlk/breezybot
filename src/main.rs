@@ -38,21 +38,18 @@ impl Data {
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
-#[macro_use]
-extern crate rust_i18n;
-i18n!("locales");
-
 struct WebServer {
     port: String,
     route: Option<AddDataEndpoint<AddDataEndpoint<poem::Route, Arc<sea_orm::DatabaseConnection>>, Arc<String>>>,
 }
 struct Services {
-    webserver: WebServer,
+    webserver: Option<WebServer>,
     discord_bot: Option<poise::serenity_prelude::Client>,
 }
 
 impl Services {
-    async fn webserver(webserver: WebServer) -> Option<()> {
+    async fn webserver(webserver: Option<WebServer>) -> Option<()> {
+        let webserver = webserver?;
         let server = poem::Server::new(poem::listener::TcpListener::bind(format!("0.0.0.0:{port}", port=webserver.port)));
         Some(server.run(webserver.route?).await.expect("oof"))
     }
@@ -79,7 +76,6 @@ impl shuttle_runtime::Service for Services {
 
 #[shuttle_runtime::main]
 async fn main(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> Result<Services, shuttle_runtime::Error> {
-    rust_i18n::set_locale("en_US");
     let mode = secret_store.get("MODE").unwrap_or("DEBUG".to_string());
 
     let db_uri = match "PRODUCTION" {
@@ -150,5 +146,5 @@ async fn main(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> Result<S
         _ => None
     };
 
-    Ok(Services{webserver, discord_bot})
+    Ok(Services{webserver: Some(webserver), discord_bot})
 }

@@ -1,4 +1,4 @@
-use sea_orm::*;
+use sea_orm::{ *, prelude::Decimal };
 use chrono::{ NaiveDate, Days, Months };
 use crate::database as db;
 use db::entities::{ *, prelude::* };
@@ -47,21 +47,57 @@ impl From<String> for Schedule {
 }
 
 pub async fn exists(db: &DatabaseConnection, role: u64) -> bool {
-    Elections::find().filter(elections::Column::Role.eq(role)).count(db).await.unwrap_or(0) > 0
+    Elections::find().filter(elections::Column::Role.eq(role))
+        .select_only()
+        .column(elections::Column::Role)
+        .into_tuple::<Decimal>()
+        .one(db)
+        .await
+        .expect("")
+        .is_some()
 }
 
 pub async fn get(db: &DatabaseConnection, id: u64) -> Result<Option<elections::Model>, DbErr> {
     Elections::find_by_id(id).one(db).await
 }
 
-pub async fn create(db: &DatabaseConnection, role: u64, limit: i16, schedule: Option<Schedule>) -> Result<elections::ActiveModel, DbErr> {
-    elections::ActiveModel {
-        role: Set(role),
-        limit: Set(limit),
+pub async fn get_many(db: &DatabaseConnection, guild: u64, limit: u64) -> Result<Vec<elections::Model>, DbErr> {
+    Elections::find().filter(elections::Column::Guild.eq(guild)).limit(limit).all(db).await
+}
+
+pub async fn create(db: &DatabaseConnection, role: u64, guild: u64, limit: Option<i16>, schedule: Option<Schedule>) -> Result<elections::Model, DbErr> {
+    let mut model = elections::ActiveModel {
+        role: Set(role.into()),
+        guild: Set(guild.into()),
         schedule: Set(schedule.and_then(|v| { Some(v.to_string().to_uppercase()) })),
-        next: Set(schedule.and_then(|v| { v.next_date(None) })),
+        scheduled_date: Set(schedule.and_then(|v| { v.next_date(None) })),
         ..Default::default()
-    }.save(db).await
+    };
+    limit.inspect(|v| model.limit = Set(*v));
+
+    model.insert(db).await
+}
+
+pub async fn update(db: &DatabaseConnection, role: u64, limit: Option<i16>, schedule: Option<Schedule>) -> Result<elections::Model, DbErr> {
+    let mut model = elections::ActiveModel {
+        role: Set(role.into()),
+        ..Default::default()
+    };
+    limit.inspect(|v| model.limit = Set(*v));
+    if let Some(schedule) = schedule {
+        let scheduled_date = Elections::find_by_id(role)
+            .select_only()
+            .column(elections::Column::ScheduledDate)
+            .into_tuple::<NaiveDate>()
+            .one(db) 
+            .await
+            .expect("");
+
+        model.schedule = Set(Some(schedule.to_string().to_uppercase()));
+        model.scheduled_date = Set(schedule.next_date(scheduled_date))
+    }
+
+    model.update(db).await
 }
 
 pub async fn delete(db: &DatabaseConnection, role: u64) -> Result<DeleteResult, DbErr> {
@@ -76,6 +112,34 @@ pub async fn model_schedule_next(
     let schedule_for = Schedule::from(schedule.to_owned()).next_date(None);
     
     let mut active_model = model.clone().into_active_model();
-    active_model.next = sea_orm::Set(schedule_for);
+    active_model.scheduled_date = sea_orm::Set(schedule_for);
     active_model.update(db).await
 }
+
+/*pub async fn affected_elections_by_user(db: &DatabaseConnection, guild: u64, user: u64) -> Result<Vec<elections::Model>, sea_orm::DbErr> {
+    Elections::find()
+        .join_as(
+            sea_orm::JoinType::InnerJoin,
+            candidates::Relation::Votes.def(),
+            Alias::new("votes"),
+        )
+        .inner_join(Candidates)
+        .join_as(
+            sea_orm::JoinType::InnerJoin,
+            votes::Relation::Members.def(),
+            Alias::new("members"),
+        )
+        .filter(members::Column::User.eq(user))
+        .filter(elections::Column::Guild.eq(guild))
+        .group_by(candidates::Column::Elections)
+        .select_only()
+        .columns(vec![
+            elections::Column::Role,
+            elections::Column::Guild,
+            elections::Column::ScheduledDate,
+            elections::Column::Schedule,
+        ])
+        .into_model::<elections::Model>()
+        .all(db)
+        .await
+}*/

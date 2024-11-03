@@ -5,12 +5,12 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "guilds")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: u64,
+    #[sea_orm(primary_key, column_type = "Decimal(Some((20, 0)))")]
+    pub id: Decimal,
     #[sea_orm(column_type = "Text")]
     pub locale: String,
-    #[sea_orm(nullable)]
-    pub elections_channel: Option<u64>,
+    #[sea_orm(nullable, column_type = "Decimal(Some((20, 0)))")]
+    pub elections_channel: Option<Decimal>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

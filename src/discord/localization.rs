@@ -41,14 +41,6 @@ pub fn translate_ds_cmd(
 ) {
     for (locale, bundle) in translations.other() {
         // Insert localized command name and description
-        let localized_command_name = match format(bundle, ftl_key, None, None) {
-            Some(x) => x,
-            None => continue, // no localization entry => skip localization
-        };
-        command
-            .name_localizations
-            .insert(locale.clone(), localized_command_name);
-
         if let Some(description) = format(bundle, ftl_key, Some("description"), None) {
             command.description_localizations.insert(
                 locale.clone(),

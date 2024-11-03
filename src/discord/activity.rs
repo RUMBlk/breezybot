@@ -1,6 +1,7 @@
 use poise::serenity_prelude::{Message, Trigger, CacheHttp, Reaction};
 use std::{ ops::Deref, collections::HashMap };
 use comfy_table::{ Table, presets::UTF8_FULL_CONDENSED };
+use num_traits::cast::ToPrimitive;
 
 use super::localization::loc;
 use crate::Data;
@@ -53,7 +54,11 @@ pub async fn stat(
             table.add_row(vec![activity, amount.to_string()]);
         }
 
-        loc!(ctx, "activity-stat-table", guild: guild.name, table: table.to_string())
+        if table.row_count() > 0 {
+            loc!(ctx, "activity-stat-table", guild: guild.name, table: table.to_string())
+        } else {
+            loc!(ctx, "activity-stat-empty")
+        }
     }.await).await;
     Ok(())
 }
@@ -74,7 +79,7 @@ pub async fn leaderboard(
 
         let Ok(db_members) 
             = db::queries::members::leaderboard(db, guild.id.get(), limit).await
-            else { return loc!(ctx, "database-unreachable") };
+            else { return loc!(ctx, "database-oops") };
 
         let mut leaderboard = Table::new();
         leaderboard
@@ -89,7 +94,7 @@ pub async fn leaderboard(
         for db_member in db_members {
             let username;
             
-            if let Ok(member) = guild.member(ctx, db_member.user).await {
+            if let Ok(member) = guild.member(ctx, db_member.user.to_u64().unwrap()).await {
                 index += 1;
                 username = match display_names.unwrap_or(false) {
                     true => member.display_name().to_string(),
@@ -107,9 +112,7 @@ pub async fn leaderboard(
         };
 
         let server_value = db::queries::members::server_value(db, guild.id.get()).await
-            .ok()
-            .unwrap_or_default()
-            .and_then(|v| { Some(v.floor().to_string()) })
+            .map(|v| v.floor().to_string())
             .unwrap_or(loc!(ctx, "activity-leaderboard-table", "server-value-err"));
 
         if leaderboard.row_count() > 0 {
@@ -155,7 +158,7 @@ pub async fn on_message(
     let reward = (message.content.len() as f64 * 0.1).ceil() as i64 //Content reward
         + (message.attachments.len() + message.sticker_items.len() + message.embeds.len()) as i64; // Attachment, sticker, and embeds reward
     
-    db::queries::members::add_points(db, guild_id.get(), message.author.id.get(), reward).await;
+    let _ = db::queries::members::add_points(db, guild_id.get(), message.author.id.get(), reward).await;
 }
 
 pub async fn on_reaction(
@@ -177,8 +180,8 @@ pub async fn on_reaction(
     else { return };
 
     if !(reaction_author.bot || message.author.bot) && reaction_author != message.author  {
-        db::queries::members::add_points(db, guild_id.get(), reaction_author.id.get(), 10).await;
-        db::queries::members::add_points(db, guild_id.get(), message.author.id.get(), 10).await;
+        let _ = db::queries::members::add_points(db, guild_id.get(), reaction_author.id.get(), 10).await;
+        let _ = db::queries::members::add_points(db, guild_id.get(), message.author.id.get(), 10).await;
     }
 }
 

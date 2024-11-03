@@ -7,8 +7,9 @@ use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{ User, CacheHttp, Message, Role, RoleId, Guild, CreateMessage, ChannelId, prelude::SerenityError };
 use chrono;
 use sea_orm::DatabaseConnection;
+use std::hash::Hash;
+use num_traits::cast::ToPrimitive;
 
-use crate::database::queries::guilds::locale;
 use crate::localization::Translations;
 use crate::Data;
 use crate::database as db;
@@ -20,14 +21,18 @@ pub enum Operations {
 }
 
 impl Operations {
-    pub async fn apply<'a>(&self, ctx: &'a poise::serenity_prelude::prelude::Context, member: &'a Member, role_id: &RoleId)
-    -> Result<(), SerenityError> {
+    pub async fn apply<'a>(
+        &self,
+        cache: impl CacheHttp + std::convert::AsRef<poise::serenity_prelude::Http>,
+        member: &'a Member,
+        role_id: &RoleId
+) -> Result<(), SerenityError> {
         match &self {
             Operations::Assign => { 
-                member.add_role(ctx.http(), role_id).await
+                member.add_role(cache, role_id).await
             },
             Operations::Remove => {
-                member.remove_role(ctx.http(), role_id).await
+                member.remove_role(cache, role_id).await
             }, 
         }?;
         Ok(())
@@ -42,7 +47,7 @@ pub async fn form_results (
 ) -> HashMap<Operations, HashSet<u64>> {
     let mut operations = HashMap::new();
 
-    let Ok(candidates) = db::queries::votes::sum_votes(db, election.role).await else { return operations };
+    let Ok(candidates) = db::queries::votes::sum_votes(db, election.role.to_u64().unwrap()).await else { return operations };
 
     let candidates: HashSet<u64> = candidates.into_iter().filter_map(|s| s.parse::<u64>().ok()).collect();
     let role_holders: HashSet<u64> = guild.members
@@ -66,83 +71,176 @@ pub async fn form_results (
     operations
 }
 
+#[derive(Eq)]
+pub struct HostResultUser {
+    user: User,
+    success: bool,
+}
+
+impl HostResultUser {
+    pub fn new(user: User, success: bool) -> Self {
+        Self { user, success }
+    }
+
+    pub fn user(&self) -> &User {
+        &self.user
+    }
+
+    pub fn success(&self) -> bool {
+        self.success
+    }
+}
+
+impl PartialEq for HostResultUser {
+    fn eq(&self, other: &Self) -> bool {
+        self.user.id == other.user.id
+    }
+} 
+
+impl Hash for HostResultUser {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.user.id.hash(state);
+    }
+}
+
+pub struct HostResult {
+    operations: HashMap<Operations, HashSet<HostResultUser>>,
+    next: Option<NaiveDate>,
+}
+
+impl HostResult {
+    pub fn new(
+        operations: HashMap<Operations, HashSet<HostResultUser>>,
+        next: Option<NaiveDate>,
+    ) -> Self {
+        Self { operations, next }
+    }
+
+    pub fn operations(&self) -> &HashMap<Operations, HashSet<HostResultUser>> {
+        &self.operations
+    }
+
+    pub fn next(&self) -> &Option<NaiveDate> {
+        &self.next
+    }
+}
+
 pub enum HostError {
     NotScheduledOrForced,
-    ScheduledForLater,
-    NoRoleId,
+    ScheduledForLater(NaiveDate),
     RoleUnavailable,
 }
 
 pub async fn host(
-    ctx: &poise::serenity_prelude::prelude::Context,
+    cache: &(impl CacheHttp + std::convert::AsRef<poise::serenity_prelude::Http>),
     db: &DatabaseConnection,
     guild: &Guild,
     election: &db::entities::elections::Model,
     force: bool,
-) -> Result<(HashMap<Operations, HashSet<User>>, Option<NaiveDate>), HostError> {
+) -> Result<HostResult, HostError> {
     let now = chrono::Local::now().date_naive();
     if !force {
-        let Some(next) = election.next else { return Err(HostError::NotScheduledOrForced) };
-        if !(now >= next) { return Err(HostError::ScheduledForLater)};
+        let Some(next) = election.scheduled_date else { return Err(HostError::NotScheduledOrForced) };
+        if !(now >= next) { return Err(HostError::ScheduledForLater(next))};
     }
-    let role_id = RoleId::from(election.role);
-    let Some(role) = guild.roles.get(&role_id) else { return Err(HostError::RoleUnavailable) };
+    let election_role = election.role.to_u64().unwrap();
+    let role_id = RoleId::from(election_role);
+    let Some(role) = guild.roles.get(&role_id) else { 
+        let _ = db::queries::elections::delete(db, role_id.get());
+        return Err(HostError::RoleUnavailable)
+    };
+
+
     let mut result = HashMap::new();
     let operations = form_results(db, election, guild.to_owned(), role).await;
     for (operation, user_ids) in operations {
         for user_id in user_ids.to_owned() {
-            let Ok(mut member) = guild.member(ctx.http(), user_id).await 
+            let Ok(mut member) = guild.member(cache, user_id).await 
             else { 
-                db::queries::candidates::unregister(db, election.role, user_id).await;
+                let _ = db::queries::candidates::unregister(db, election_role, user_id).await;
                 continue
             };
 
-            let Ok(_) = operation.apply(ctx, &mut member, &role_id).await else { continue };
-            result.entry(operation.clone()).or_insert(HashSet::new()).insert((*member).user.clone());
+            let success = operation.apply(cache, &mut member, &role_id).await.is_ok();
+            result.entry(operation.clone()).or_insert(HashSet::new()).insert(HostResultUser::new((*member).user.clone(), success));
         }
     }
 
     let next = if let Ok(model) = db::queries::elections::model_schedule_next(db, election.clone()).await {
-        model.next
+        model.scheduled_date
     } else {
-        election.next
+        election.scheduled_date
     };
 
-    Ok((result, next))
+    Ok(HostResult::new(result, next))
 }
 
 pub fn compile_announcement<'a>(
+    announcement: &'a mut String,
     tr: &Translations,
     locale: Option<&'a str>,
-    operations: HashMap<Operations, HashSet<User>>,
-    scheduled_for: Option<NaiveDate>,
+    host_result: HostResult,
     role_id: String,
-) -> String {
-    let mut announcement: String = String::new();
-    if operations.len() > 0 {
+) {
+    if host_result.operations().len() > 0 {
         if announcement.is_empty() { 
-            announcement = format!("{}\n", crate::loc!(tr, locale, "elections-announcement"));
+            *announcement = format!("{}\n", crate::loc!(tr, locale, "elections-announcement"));
         };
-        announcement += &format!("{}\n", crate::loc!(tr, locale, "elections-announcement", "role", role: role_id.clone()));
+        *announcement += &format!("{}\n", crate::loc!(tr, locale, "elections-announcement", "role", role: role_id.clone()));
     }
-    for (operation, users) in operations {
+    for (operation, users) in host_result.operations() {
         match operation {
             Operations::Assign => {
-                announcement += &format!("{}\n", crate::loc!(tr, locale, "elections-announcement", "assigned"));
+                *announcement += &format!("{}\n", crate::loc!(tr, locale, "elections-announcement", "assigned"));
             },
             Operations::Remove => {
-                announcement += &format!("{}\n", crate::loc!(tr, locale, "elections-announcement", "removed"));
+                *announcement += &format!("{}\n", crate::loc!(tr, locale, "elections-announcement", "removed"));
             },
         }
         for user in users {
-            announcement += &user.mention().to_string();
+            *announcement += &user.user().mention().to_string();
+            if !user.success() { *announcement += &crate::loc!(tr, locale, "elections-announcement", "failed"); } 
         }
     }
-    let Some(scheduled_for) = scheduled_for else { return format!("{}\n", announcement) };
+
+    if let Some(next) = host_result.next() {
+        if !announcement.is_empty() {
+            *announcement += &crate::loc!(
+                tr,
+                locale,
+                "elections-announcement",
+                "next",
+                date: next.to_string(),
+                role: role_id
+            );
+        }
+    }
+
+    *announcement += "\n";
+}
+
+pub enum AnnounceError {
+    SerenityError(SerenityError),
+    ChannelNotSet,
+    EmptyAnnouncement,
+}
+
+pub async fn announce(
+    db: &DatabaseConnection,
+    cache: &(impl CacheHttp + std::convert::AsRef<poise::serenity_prelude::Http>),
+    guild: &Guild, announcement: String
+) -> Result<Message, AnnounceError> {
     if !announcement.is_empty() {
-        announcement += &crate::loc!(tr, locale, "elections-announcement", "scheduled_for", date: scheduled_for.to_string(), role: role_id)
-    };
-    format!("{}\n", announcement)
+        let announce_in = db::queries::guilds::elections_channel(db, guild.id.get()).await
+            .map(|v| Some(ChannelId::from(v.to_u64().unwrap())))
+            .unwrap_or(guild.system_channel_id);
+        if let Some(channel) = announce_in {
+            channel.send_message(cache, CreateMessage::new().content(announcement)).await
+                .map_err(|e| AnnounceError::SerenityError(e))
+        } else { Err(AnnounceError::ChannelNotSet) }
+    } else {
+        Err(AnnounceError::EmptyAnnouncement)
+    }
 }
 
 pub async fn affected(
@@ -152,32 +250,23 @@ pub async fn affected(
 ) {
     if message.author.bot { return };
     let Some(db) = &data.db else { return };
-    let (Ok(elections), Some(guild)) = (
-        db::queries::votes::affected_elections_by_user(db, message.author.id.get()).await,
-        message.guild(ctx.cache().unwrap())) else { return };
+    let Some(guild) = message.guild(&ctx.cache).map(|v| (*v).clone()) else { return };
+    let Ok(elections) = db::queries::votes::affected_elections_by_user(db, guild.id.get(), message.author.id.get()).await else { return };
 
     let mut announcement: String = String::new();
 
     for id in elections {
-        let Ok(Some(election)) = db::queries::elections::get(db, id).await else { continue };
-        let Ok((operations, scheduled_for))
+        let Some(election) = db::queries::elections::get(db, id).await.expect("") else { continue };
+        let Ok(host_result)
             = host(ctx, db, &guild, &election, false).await else { continue };
-        announcement += &compile_announcement(
-            &data.translations, Some(&locale(db, &guild.id.to_string()).await),
-            operations, scheduled_for, election.role.to_string()
+        compile_announcement(
+            &mut announcement,
+            &data.translations, Some(&db::queries::guilds::locale(db, guild.id.get()).await),
+            host_result, election.role.to_string()
         );
     }
 
-    if !announcement.is_empty() {
-        let announce_in = if let Ok(Some(guild_db)) = db::queries::guilds::get(db, guild.id.get()).await {
-            guild_db.elections_channel.unwrap_or_default()
-        }
-        else { 
-            guild.system_channel_id.and_then(|value| { Some(value.get()) }).unwrap_or_default()
-        };
-        let announce_in = ChannelId::from(announce_in);
-        let _ = announce_in.send_message(ctx.http(), CreateMessage::new().content(announcement)).await;
-    }
+    let _ = announce(db, ctx, &guild, announcement);
 }
 
 

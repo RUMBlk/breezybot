@@ -1,4 +1,4 @@
-use sea_orm::{ *, prelude::Expr };
+use sea_orm::{ *, prelude::{ Expr, Decimal } };
 use chrono::TimeDelta;
 use sea_query::OnConflict;
 use crate::database as db;
@@ -6,6 +6,24 @@ use crate::database as db;
 use db::entities::{ *, prelude::* };
 /*use super::Error;
 use super::sqlmacro::*;*/
+
+pub async fn id(
+    db: &DatabaseConnection,
+    elections: u64,
+    user: u64
+) -> Result<Option<i64>, DbErr> {
+    Candidates::find()
+        .filter(
+            sea_orm::Condition::all()
+                .add(candidates::Column::Elections.eq(elections))
+                .add(candidates::Column::User.eq(user))
+        )
+        .select_only()
+        .column(candidates::Column::Id)
+        .into_tuple()
+        .one(db)
+        .await
+}
 
 pub async fn get(
     db: &DatabaseConnection,
@@ -46,8 +64,8 @@ pub async fn register(
     user: u64
 ) -> Result<InsertResult<candidates::ActiveModel>, DbErr> {
     let model = candidates::ActiveModel {
-        elections: Set(elections),
-        user: Set(user),
+        elections: Set(elections.into()),
+        user: Set(user.into()),
         active: Set(true),
         ..Default::default()
     };
@@ -56,11 +74,12 @@ pub async fn register(
         .on_conflict(
             OnConflict::columns(vec![candidates::Column::Elections, candidates::Column::User])
                 .update_column(candidates::Column::Active)
-                .action_and_where(Expr::col(candidates::Column::Active).eq(false))
+                .action_and_where(Expr::col((Candidates, candidates::Column::Active)).eq(false))
                 .to_owned()
         )
         .exec(db)
         .await
+        .inspect_err(|v| eprintln!("{}", v))
 }
 
 pub async fn unregister(
@@ -68,6 +87,10 @@ pub async fn unregister(
     elections: u64,
     user: u64
 ) -> Result<UpdateResult, DbErr> {
+    if let Some(id) = id(db, elections, user).await? {
+        if let Err(e) = super::votes::remove_candidate_votes(db, id).await { return Err(e) };
+    }
+
     Candidates::update_many()
         .filter(
             sea_orm::Condition::all()
@@ -100,14 +123,14 @@ pub async fn ban(
     elections: u64,
     user: u64,
     duration: TimeDelta
-) -> Result<InsertResult<candidates::ActiveModel>, DbErr> {
+) -> Result<candidates::Model, DbErr> {
     let banned_until = chrono::Local::now()
         .checked_add_signed(duration)
         .unwrap_or(chrono::DateTime::<chrono::Utc>::MAX_UTC.into()).into(); //max value when overflow
 
     let model = candidates::ActiveModel {
-        elections: Set(elections),
-        user: Set(user),
+        elections: Set(elections.into()),
+        user: Set(user.into()),
         banned_until: Set(Some(banned_until)),
         ..Default::default()
     };
@@ -121,7 +144,7 @@ pub async fn ban(
                         .or(Expr::current_timestamp().gte(Expr::col(candidates::Column::BannedUntil))))
                 .to_owned()
         )
-        .exec(db)
+        .exec_with_returning(db)
         .await
 }
 
@@ -129,10 +152,29 @@ pub async fn unban(db: &DatabaseConnection, elections: u64, user: u64) -> Result
     Candidates::update_many()
         .filter(candidates::Column::Elections.eq(elections))
         .filter(candidates::Column::User.eq(user))
+        .filter(candidates::Column::BannedUntil.is_not_null())
         .col_expr(
             candidates::Column::BannedUntil,
             Expr::value("NULL"),
         ).exec(db).await
+}
+
+pub async fn list_by_voter(db: &DatabaseConnection, role: u64, user: u64) -> Result<Vec<(i64, Decimal)>, DbErr> {
+    Candidates::find()
+        .inner_join(Votes)
+        .inner_join(Elections)
+        .filter(
+            sea_orm::Condition::all()
+            .add(votes::Column::Member.eq(user))
+            .add(elections::Column::Role.eq(role))
+            .add(candidates::Column::Active.eq(true))
+        )
+        .select_only()
+        .column(candidates::Column::Id)
+        .column(candidates::Column::User)
+        .into_tuple()
+        .all(db)
+        .await 
 }
 
 
