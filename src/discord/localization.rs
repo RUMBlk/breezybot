@@ -93,9 +93,9 @@ pub fn translate_ds_cmd(
     command.description =
         format(bundle, ftl_key, Some("description"), None);
 
-    if let Some(txt) = &command.description {
+    /*if let Some(txt) = &command.description {
         eprintln!("e: {}", txt);
-    }
+    }*/
 
     for parameter in &mut command.parameters {
         // Set fallback parameter name and description to en-US
